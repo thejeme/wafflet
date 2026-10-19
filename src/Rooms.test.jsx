@@ -1,3 +1,4 @@
+import { beforeEach, expect, test, vi } from "vitest";
 import React from "react";
 import {
   act,
@@ -12,27 +13,27 @@ import { useCollectionData } from "react-firebase-hooks/firestore";
 import ChatRoom from "./ChatRoom";
 import PollRoom from "./PollRoom";
 
-jest.mock("nanoid", () => ({
+vi.mock("nanoid", () => ({
   customAlphabet: () => {
     let id = 0;
     return () => `id-${++id}`;
   },
 }));
-jest.mock("./firebase", () => ({ firestore: {} }));
-jest.mock("./identity", () => ({ getUid: () => "me" }));
-jest.mock("firebase/firestore", () => ({
-  collection: jest.fn(() => ({})),
-  query: jest.fn(() => ({})),
-  orderBy: jest.fn(),
-  limit: jest.fn(),
-  serverTimestamp: jest.fn(() => "timestamp"),
-  doc: jest.fn(() => "poll-ref"),
-  addDoc: jest.fn(),
-  onSnapshot: jest.fn(),
-  runTransaction: jest.fn(),
+vi.mock("./firebase", () => ({ firestore: {} }));
+vi.mock("./identity", () => ({ getUid: () => "me" }));
+vi.mock("firebase/firestore", () => ({
+  collection: vi.fn(() => ({})),
+  query: vi.fn(() => ({})),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
+  serverTimestamp: vi.fn(() => "timestamp"),
+  doc: vi.fn(() => "poll-ref"),
+  addDoc: vi.fn(),
+  onSnapshot: vi.fn(),
+  runTransaction: vi.fn(),
 }));
-jest.mock("react-firebase-hooks/firestore", () => ({
-  useCollectionData: jest.fn(),
+vi.mock("react-firebase-hooks/firestore", () => ({
+  useCollectionData: vi.fn(),
 }));
 
 let snapshotListener;
@@ -47,13 +48,13 @@ const pollData = () => ({
 const snapshot = (data) => ({ exists: () => Boolean(data), data: () => data });
 
 beforeEach(() => {
-  jest.clearAllMocks();
-  Element.prototype.scrollTo = jest.fn();
+  vi.clearAllMocks();
+  Element.prototype.scrollTo = vi.fn();
   useCollectionData.mockReturnValue([[], false, undefined]);
   onSnapshot.mockImplementation((ref, listener) => {
     snapshotListener = listener;
     listener(snapshot(null));
-    return jest.fn();
+    return vi.fn();
   });
 });
 
@@ -143,8 +144,8 @@ test("poll creation rejects whitespace and preserves valid fields on failure", a
 
 test("creating a shared poll never overwrites an existing poll", async () => {
   const transaction = {
-    get: jest.fn(async () => snapshot(pollData())),
-    set: jest.fn(),
+    get: vi.fn(async () => snapshot(pollData())),
+    set: vi.fn(),
   };
   runTransaction.mockImplementation((db, callback) => callback(transaction));
   const user = userEvent.setup();
@@ -162,9 +163,9 @@ test("transaction retries retain another participant’s vote", async () => {
   const original = pollData();
   onSnapshot.mockImplementation((ref, listener) => {
     listener(snapshot(original));
-    return jest.fn();
+    return vi.fn();
   });
-  const update = jest.fn();
+  const update = vi.fn();
   let current = original;
   runTransaction.mockImplementation(async (db, callback) => {
     const transaction = { get: async () => snapshot(current), update };
@@ -198,9 +199,9 @@ test("votes already saved in another tab cannot be counted twice", async () => {
   const original = pollData();
   onSnapshot.mockImplementation((ref, listener) => {
     listener(snapshot(original));
-    return jest.fn();
+    return vi.fn();
   });
-  const update = jest.fn();
+  const update = vi.fn();
   runTransaction.mockImplementation((db, callback) =>
     callback({
       get: async () => snapshot({ ...original, voters: ["me"] }),
@@ -218,7 +219,7 @@ test("votes already saved in another tab cannot be counted twice", async () => {
 test("failed votes leave voting available for retry", async () => {
   onSnapshot.mockImplementation((ref, listener) => {
     listener(snapshot(pollData()));
-    return jest.fn();
+    return vi.fn();
   });
   runTransaction.mockRejectedValue(new Error("offline"));
   render(<PollRoom id="test" />);
@@ -250,7 +251,7 @@ test("poll results update when a live snapshot arrives", () => {
 test("loading errors offer a retry instead of the creation form", () => {
   onSnapshot.mockImplementation((ref, listener, error) => {
     error(new Error("unavailable"));
-    return jest.fn();
+    return vi.fn();
   });
   render(<PollRoom id="test" />);
   expect(screen.getByRole("alert")).toHaveTextContent(
@@ -266,7 +267,7 @@ test("a transaction response cannot replace newer live results", async () => {
   onSnapshot.mockImplementation((ref, listener) => {
     snapshotListener = listener;
     listener(snapshot(original));
-    return jest.fn();
+    return vi.fn();
   });
   let finish;
   runTransaction.mockImplementation(

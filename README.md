@@ -15,9 +15,10 @@ Wafflet is a small React app for starting a conversation or making a quick group
 
 ## Run locally
 
-With Node.js and npm installed:
+Use Node.js 24.22.0 (pinned in [.nvmrc](.nvmrc)) and npm 11 or newer:
 
 ```sh
+nvm use
 npm ci
 npm start
 ```
@@ -40,22 +41,28 @@ Chat links use `/c/:id`; poll links use `/p/:id`. Each browser gets a generated 
 
 ## Development
 
-| Command                                    | Purpose                                |
-| ------------------------------------------ | -------------------------------------- |
-| `npm start`                                | Start the development server.          |
-| `npm test`                                 | Run tests in watch mode.               |
-| `npm test -- --watchAll=false --runInBand` | Run the test suite once.               |
-| `npm run build`                            | Create a production build in `build/`. |
+| Command            | Purpose                                |
+| ------------------ | -------------------------------------- |
+| `npm start`        | Start the development server.          |
+| `npm test`         | Run tests in watch mode.               |
+| `npm run test:run` | Run the test suite once.               |
+| `npm run lint`     | Check JavaScript and React hooks.      |
+| `npm run build`    | Lint and build production into `build/`. |
+| `npm run preview`  | Preview the production build locally.  |
 
-Regression tests in [src/Rooms.test.js](src/Rooms.test.js) cover message failures, duplicate submissions, poll validation, concurrent voting, live results, and retry behavior. They mock Firestore and do not write to the live database.
+Regression tests in [src/Rooms.test.jsx](src/Rooms.test.jsx) cover message failures, duplicate submissions, poll validation, concurrent voting, live results, and retry behavior. They mock Firestore and do not write to the live database.
 
-The app uses React 18, React Router, Firebase, and Create React App. Shared styles live in [src/App.css](src/App.css); room behavior lives in [src/ChatRoom.js](src/ChatRoom.js) and [src/PollRoom.js](src/PollRoom.js).
+The app uses React 19, React Router 7, Firebase 13, Vite, and Vitest. Shared styles live in [src/App.css](src/App.css); room behavior lives in [src/ChatRoom.jsx](src/ChatRoom.jsx) and [src/PollRoom.jsx](src/PollRoom.jsx).
+
+The dependency override in `package.json` keeps Firebase's Node-only gRPC dependency on a patched version until Firebase updates its pinned range.
 
 ## Deployment
 
+Netlify reads the Node version from [.nvmrc](.nvmrc) and the build command and publish directory from [netlify.toml](netlify.toml). This overrides an older Node version saved in the Netlify UI and prevents dependency errors such as `Cannot find module 'node:path'`. After deploying these changes, retry the build with a cleared dependency cache.
+
 Run `npm run build` and publish the `build/` directory to a static host. Configure the host to serve `index.html` for application routes so shared chat and poll links work when opened directly. [public/\_redirects](public/_redirects) includes this fallback for hosts that support that file.
 
-When deploying to a different domain, update the canonical URL and absolute social-image URLs in [public/index.html](public/index.html). Page-specific titles and metadata are updated in the browser by [src/PageMeta.js](src/PageMeta.js); crawlers that do not run JavaScript receive the default Wafflet preview.
+When deploying to a different domain, update the canonical URL and absolute social-image URLs in [index.html](index.html). Page-specific titles and metadata are updated in the browser by [src/PageMeta.jsx](src/PageMeta.jsx); crawlers that do not run JavaScript receive the default Wafflet preview.
 
 ## Typography and assets
 

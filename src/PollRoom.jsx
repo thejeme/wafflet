@@ -212,6 +212,7 @@ export default function PollRoom({ id }) {
                       {!hasVoted && (
                         <button
                           className="vote-button"
+                          aria-label={`Vote for ${option.text}`}
                           disabled={busy}
                           onClick={() => sendVote(option.id)}
                         >
