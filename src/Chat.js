@@ -1,28 +1,32 @@
-import React from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { FiArrowLeft } from "react-icons/fi";
+import React, { useEffect, useRef } from "react";
+import { useParams } from "react-router-dom";
 import ChatRoom from "./ChatRoom";
+import Header from "./Header";
+import PageMeta from "./PageMeta";
 
-function App() {
-  const params = useParams();
-  const navigate = useNavigate();
+export default function Chat() {
+  const { id } = useParams();
+  const shell = useRef();
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    // Safari's layout viewport can stay full-height when the keyboard opens.
+    const resize = () => {
+      if (viewport.scale === 1 && shell.current) {
+        shell.current.style.height = `${viewport.height}px`;
+      }
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    return () => viewport.removeEventListener("resize", resize);
+  }, []);
 
   return (
-    <div>
-      <header>
-        <FiArrowLeft
-          size={40}
-          className="clickable"
-          onClick={() => navigate("/")}
-        />
-        <h1>c/{params.id}</h1>
-      </header>
-
-      <section>
-        <ChatRoom id={params.id} />
-      </section>
+    <div ref={shell} className="app-shell chat-shell">
+      <PageMeta title={`Chat ${id} · Wafflet`} room />
+      <Header type="Chat room" id={id} />
+      <ChatRoom key={id} id={id} />
     </div>
   );
 }
-
-export default App;

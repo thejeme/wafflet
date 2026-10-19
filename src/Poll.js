@@ -1,28 +1,16 @@
 import React from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { FiArrowLeft } from "react-icons/fi";
+import { useParams } from "react-router-dom";
 import PollRoom from "./PollRoom";
+import Header from "./Header";
+import PageMeta from "./PageMeta";
 
-function App() {
-  const params = useParams();
-  const navigate = useNavigate();
-
+export default function Poll() {
+  const { id } = useParams();
   return (
-    <div>
-      <header>
-        <FiArrowLeft
-          size={40}
-          className="clickable"
-          onClick={() => navigate("/")}
-        />
-        <h1>p/{params.id}</h1>
-      </header>
-
-      <section>
-        <PollRoom id={params.id} />
-      </section>
+    <div className="app-shell">
+      <PageMeta title={`Poll ${id} · Wafflet`} room />
+      <Header type="Poll" id={id} />
+      <PollRoom key={id} id={id} />
     </div>
   );
 }
-
-export default App;

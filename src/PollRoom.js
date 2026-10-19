@@ -1,155 +1,350 @@
-import React, { useState, useEffect } from "react";
-import { initializeApp } from "firebase/app";
-import { getFirestore, setDoc, getDoc, doc, serverTimestamp } from "firebase/firestore";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  doc,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
+} from "firebase/firestore";
 import { customAlphabet } from "nanoid";
+import { FiPlus, FiX, FiCheck } from "react-icons/fi";
+import { firestore } from "./firebase";
+import { getUid } from "./identity";
+
 const nanoid = customAlphabet("1234567890abcdefghkmnopqrstuvwxyz", 36);
+const makeOption = () => ({ text: "", votes: 0, id: nanoid() });
 
-function ChatRoom(params) {
-  const app = initializeApp({
-    apiKey: "AIzaSyDn0CsqD1u4fpK0hhoSYeQP5HSpRHXyroA",
-    authDomain: "wafflet-chat.firebaseapp.com",
-    projectId: "wafflet-chat",
-    storageBucket: "wafflet-chat.appspot.com",
-    messagingSenderId: "1077477497384",
-    appId: "1:1077477497384:web:cf5c28be958a23c9bd731d",
-    measurementId: "G-H4XBJXBC0X",
-  });
-
-  const firestore = getFirestore(app);
-
+export default function PollRoom({ id }) {
   const [title, setTitle] = useState("");
-  const [options, setOptions] = useState([{text: "", votes: 0, id: nanoid()}, {text: "", votes: 0, id: nanoid()}, {text: "", votes: 0, id: nanoid()}]);
-  const [voters, setVoters] = useState([]);
-  const [isVoted, setIsVoted] = useState(false);
-  const [isCreated, setIsCreated] = useState(null);
-  const uid = localStorage.getItem("uid");
+  const [options, setOptions] = useState(() => [
+    makeOption(),
+    makeOption(),
+    makeOption(),
+  ]);
+  const [poll, setPoll] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const submitting = useRef(false);
+  const optionInputs = useRef({});
+  const uid = getUid();
 
   useEffect(() => {
-    const getPoll = async () => {
-      const pollRef = doc(firestore, "polls", params.id);
-      const pollDoc = await getDoc(pollRef);
-      if (pollDoc.exists()) {
-        setTitle(pollDoc.data().title);
-        setOptions(pollDoc.data().options);
-        setVoters(pollDoc.data().voters);
-        setIsVoted(pollDoc.data().voters.includes(uid));
-        setIsCreated(true);
-      } else {
-        setIsCreated(false)
-      }
-    };
-    getPoll();
-  }, [params.id, firestore, uid]);
+    setLoading(true);
+    setLoadError(false);
+    return onSnapshot(
+      doc(firestore, "polls", id),
+      (snapshot) => {
+        setPoll(snapshot.exists() ? snapshot.data() : null);
+        setLoading(false);
+        setLoadError(false);
+      },
+      () => {
+        setLoadError(true);
+        setLoading(false);
+      },
+    );
+  }, [id, retry]);
 
-  const sendVote = async (index) => {
-    setIsVoted(true);
-    if (isVoted) {
-      return;
-    }
-  
-    const pollRef = doc(firestore, "polls", params.id);
-    const pollDoc = await getDoc(pollRef);
-  
-    if (pollDoc.exists()) {
-      const pollData = pollDoc.data();
-      const updatedOptions = [...pollData.options];
-      updatedOptions[index].votes += 1;
-  
-      const updatedVoters = [...pollData.voters, uid];
-  
-      await setDoc(pollRef, {
-        title: pollData.title,
-        options: updatedOptions,
-        uid: pollData.uid,
-        id: pollData.id,
-        voters: updatedVoters,
-        createdAt: pollData.createdAt,
-      });
-  
-      setOptions(updatedOptions);
-      setVoters(updatedVoters);
+  const sendVote = async (optionId) => {
+    if (submitting.current || poll.voters.includes(uid)) return;
+    submitting.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const updatedPoll = await runTransaction(
+        firestore,
+        async (transaction) => {
+          const pollRef = doc(firestore, "polls", id);
+          const snapshot = await transaction.get(pollRef);
+          if (!snapshot.exists()) throw new Error("Poll missing");
+          const current = snapshot.data();
+          if (current.voters.includes(uid)) return current;
+          if (!current.options.some((option) => option.id === optionId))
+            throw new Error("Option missing");
+          const updated = {
+            ...current,
+            options: current.options.map((option) =>
+              option.id === optionId
+                ? { ...option, votes: option.votes + 1 }
+                : option,
+            ),
+            voters: [...current.voters, uid],
+          };
+          transaction.update(pollRef, {
+            options: updated.options,
+            voters: updated.voters,
+          });
+          return updated;
+        },
+      );
+      // A newer live snapshot can arrive before the transaction resolves.
+      setPoll((current) =>
+        current && current.voters.length > updatedPoll.voters.length
+          ? current
+          : updatedPoll,
+      );
+    } catch {
+      setError("Your vote couldn’t be saved. Please try again.");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
     }
   };
 
-  const createPoll = async (e) => {
-    e.preventDefault();
-
-    if (title === "" || options.length === 0 || options.find((option) => option.text === "")) {
-      alert("Title and options cannot be empty");
+  const createPoll = async (event) => {
+    event.preventDefault();
+    if (submitting.current) return;
+    const trimmedTitle = title.trim();
+    const trimmedOptions = options.map((option) => ({
+      ...option,
+      text: option.text.trim(),
+    }));
+    if (
+      !trimmedTitle ||
+      trimmedOptions.length < 2 ||
+      trimmedOptions.some((option) => !option.text)
+    ) {
+      setError("Add a question and at least two filled-in options.");
       return;
     }
-
-    await setDoc(doc(firestore, "polls", params.id), {
-      title: title,
-      options: options,
-      uid: uid,
-      id: params.id,
-      voters: voters,
-      createdAt: serverTimestamp(),
-    });
-    setIsCreated(true);
+    submitting.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await runTransaction(firestore, async (transaction) => {
+        const pollRef = doc(firestore, "polls", id);
+        const existing = await transaction.get(pollRef);
+        // Another participant may have created this shared room already.
+        if (existing.exists()) return;
+        transaction.set(pollRef, {
+          title: trimmedTitle,
+          options: trimmedOptions,
+          uid,
+          id,
+          voters: [],
+          createdAt: serverTimestamp(),
+        });
+      });
+    } catch {
+      setError(
+        "Your poll couldn’t be created. Your question and options are still here — try again.",
+      );
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
   };
 
   const newOption = () => {
-    setOptions([...options, {text: "", votes: 0, id: nanoid()}]);
+    const option = makeOption();
+    setOptions((current) => [...current, option]);
+    requestAnimationFrame(() => optionInputs.current[option.id]?.focus());
   };
-
 
   const deleteOption = (index) => {
-    setOptions(options.filter((_, i) => i !== index));
+    const nextFocus = options[index + 1] || options[index - 1];
+    setOptions((current) => current.filter((_, i) => i !== index));
+    optionInputs.current[nextFocus.id]?.focus();
   };
 
+  const hasVoted = poll?.voters.includes(uid);
+
   return (
-    <main>
-      {isCreated === true && <div>
-        <h1>{title}</h1>
-        <div className="polls">
-        {options?.map((option, index) =>  <div className="row" key={option.id}>
-          <div className='poll'>
-            <div className="row">
-              <p>{option.votes} votes</p>
-              <p>{voters.length > 0 ? option.votes / voters.length * 100 : 0}%</p>
+    <main className="poll-main">
+      {loading && (
+        <p className="state-message" role="status">
+          Loading poll…
+        </p>
+      )}
+      {loadError && (
+        <div className="notice error-notice" role="alert">
+          Couldn’t load this poll. Check your connection and{" "}
+          <button
+            className="inline-button"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            try again
+          </button>
+          .
+        </div>
+      )}
+      {!loading &&
+        !loadError &&
+        (poll ? (
+          <div className="poll-content">
+            <h1>{poll.title}</h1>
+            <p className="page-description">
+              {hasVoted
+                ? "Results update live."
+                : "Choose one option to vote."}
+            </p>
+            <div
+              className="poll-options"
+              aria-label="Poll options"
+              aria-busy={busy}
+            >
+              {poll.options.map((option) => {
+                const percent = poll.voters.length
+                  ? Math.round((option.votes / poll.voters.length) * 100)
+                  : 0;
+                return (
+                  <div className="poll-result" key={option.id}>
+                    <div className="poll-result-top">
+                      <span className="option-text">{option.text}</span>
+                      <span className="poll-percent">{percent}%</span>
+                    </div>
+                    <div
+                      className="poll-track"
+                      role="meter"
+                      aria-label={option.text}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={percent}
+                    >
+                      <div style={{ width: `${percent}%` }} />
+                    </div>
+                    <div className="poll-result-bottom">
+                      <span>
+                        {option.votes} {option.votes === 1 ? "vote" : "votes"}
+                      </span>
+                      {!hasVoted && (
+                        <button
+                          className="vote-button"
+                          disabled={busy}
+                          onClick={() => sendVote(option.id)}
+                        >
+                          Vote
+                          <span className="sr-only"> for {option.text}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <p>{option.text}</p>
+            <div className="poll-summary" aria-live="polite">
+              <span>
+                {poll.voters.length}{" "}
+                {poll.voters.length === 1 ? "vote" : "votes"} in total
+              </span>
+              {hasVoted && (
+                <span className="voted-status">
+                  <FiCheck /> You’ve voted
+                </span>
+              )}
+              {busy && <span>Saving…</span>}
+            </div>
+            {error && (
+              <p className="notice error-notice" role="alert">
+                {error}
+              </p>
+            )}
+            <p className="poll-hint">Share the link to get everyone’s vote.</p>
           </div>
-            <button className="vote-button" disabled={isVoted} onClick={() => sendVote(index)}>Vote</button>
-          </div>
-        )}
-        </div>
-        <h2>Total votes {voters.length}</h2>
-      </div>}
-      {isCreated === false && <div>
-        <h1>New Poll</h1>
-        <h2>Title</h2>
-        <input
-          maxLength="1000"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <div>
-          <h2>Options</h2>
-          {options.map((option, index) => (
-          <div className="row" key={option.id}>
-            <input
-              maxLength="1000"
-              value={option.text}
-              onChange={(e) => {
-                const newOptions = [...options];
-                newOptions[index].text = e.target.value;
-                setOptions(newOptions);
-              }}
-              placeholder={`Option ${index + 1}`}
-            />
-            <button className="option-button" onClick={() => deleteOption(index)}>-</button>
-          </div>
-          ))}
-          <button className="option-button" onClick={newOption}>+</button>
-        </div>
-        <button className="front-div" onClick={createPoll}>Create</button>  
-      </div>}
+        ) : (
+          <form className="poll-form" onSubmit={createPoll}>
+            <h1>Create a poll</h1>
+            <p className="page-description">
+              Ask a question, add some options, and share the link.
+            </p>
+            <fieldset disabled={busy}>
+              <div className="form-field">
+                <label htmlFor="poll-title">Your question</label>
+                <input
+                  id="poll-title"
+                  maxLength={1000}
+                  placeholder="Where should we go for lunch?"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-field">
+                <div className="field-heading">
+                  <span id="options-label">Options</span>
+                  <span>At least two</span>
+                </div>
+                <div
+                  className="option-inputs"
+                  role="group"
+                  aria-labelledby="options-label"
+                >
+                  {options.map((option, index) => (
+                    <div className="option-row" key={option.id}>
+                      <span className="option-number" aria-hidden="true">
+                        {index + 1}
+                      </span>
+                      <label
+                        className="sr-only"
+                        htmlFor={`option-${option.id}`}
+                      >
+                        Option {index + 1}
+                      </label>
+                      <input
+                        id={`option-${option.id}`}
+                        ref={(element) => {
+                          optionInputs.current[option.id] = element;
+                        }}
+                        maxLength={1000}
+                        value={option.text}
+                        onChange={(event) =>
+                          setOptions((current) =>
+                            current.map((item) =>
+                              item.id === option.id
+                                ? { ...item, text: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                        placeholder={`Option ${index + 1}`}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="icon-button remove-option"
+                        disabled={options.length <= 2}
+                        onClick={() => deleteOption(index)}
+                        aria-label={`Remove option ${index + 1}`}
+                        title={
+                          options.length <= 2
+                            ? "A poll needs at least two options"
+                            : `Remove option ${index + 1}`
+                        }
+                      >
+                        <FiX />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="text-button add-option"
+                  onClick={newOption}
+                  disabled={options.length >= 20}
+                >
+                  <FiPlus /> Add option
+                  {options.length >= 20 ? " (limit reached)" : ""}
+                </button>
+              </div>
+              {error && (
+                <p className="notice error-notice" role="alert">
+                  {error}
+                </p>
+              )}
+              <button
+                type="submit"
+                className="primary-button create-poll-button"
+              >
+                {busy ? "Creating poll…" : "Create poll"}
+              </button>
+            </fieldset>
+            <p className="form-hint">
+              Once created, your poll is ready to share.
+            </p>
+          </form>
+        ))}
     </main>
   );
 }
-
-export default ChatRoom;

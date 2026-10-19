@@ -1,6 +1,7 @@
 {
   "short_name": "Wafflet",
   "name": "Wafflet",
+  "description": "Simple chats and polls. Just share a link.",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,6 +21,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#db993a",
+  "background_color": "#282535"
 }
